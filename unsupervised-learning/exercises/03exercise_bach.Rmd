@@ -1,0 +1,201 @@
+---
+title: "Open exercise unsupervised learning using BACH data"
+author: "Sebastian Sternberg"
+date: "27 March 2019"
+output: html_document
+---
+For the next 1h, we work with the BACH (Bank for the Accounts of Companies Harmonized) data set which you already know from yesterday. We provide you with a smaller version of this data set mainly for computational reasons, but the exercises can be easily extended to the whole data set as well. 
+
+```{r}
+library(caret)
+library(factoextra)
+
+
+rm(list = ls())
+load("BACH.Rda")
+
+```
+
+
+# PCA for data inspection
+
+Now we want to apply PCA to the Bach data. 
+
+Use the Bach data set and apply PCA to it (using the prcomp function). Remember to scale (scale = T) the data. 
+
+```{r}
+
+
+
+
+
+```
+
+Check the goodness of fit. Apply the summary command to the pca object to obtain the proportional variance explained by each principle component. 
+
+
+```{r}
+
+
+```
+
+Produce a scree plot, and decide how many principle components we need. 
+
+```{r}
+
+
+```
+
+Create a biplot of the PCA using the biplot function.
+
+```{r}
+
+```
+
+# Clustering
+
+Lastly, clustering should be applied to the bach data set. For simplicity, we only use data from 2015. 
+
+
+```{r}
+#subset data set, and delete D-loss variable
+
+bach$D_loss <- NULL
+bach_2015 <- bach[bach$year == 2015, ]
+
+```
+
+
+Create a scaled version of this data set. Remember that k-means only works with numeric data, so you also need to drop the first 4 columns. Name this object **bach_scaled_2015**.
+
+```{r}
+
+bach_2015_sub <- bach_2015[, -c(1:4)]
+
+head(bach_2015_sub)
+
+bach_scaled_2015 <- scale(bach_2015_sub)
+
+```
+
+Before we start with k-means, we need to decide how many clusters we want to find. We can use the "elbow" method for that. 
+
+```{r error=TRUE}
+library(factoextra)
+
+fviz_nbclust(bach_scaled_2015, #data set we want to use
+             kmeans, #cluster method
+             method = "wss", #"wss" =  total within sum of square
+             k.max = 30) +
+labs(subtitle = "Elbow method")
+
+
+```
+
+We start with nine clusters. Run a k-means with k = 9. 
+
+```{r}
+
+
+```
+
+Visualize the cluster solution. For this, use the eclust function to run k-means with k = 9 again. Plot the output using the fviz_cluster function. 
+
+
+```{r}
+
+
+
+```
+
+
+For a further check, create a contingency table that shows the cluster assignment over the sectors and over the countries. 
+
+```{r}
+
+
+```
+
+If necessary, you can re-run k-means for different numbers of k. 
+
+# Hierarchical clustering
+
+Lastly, we want to apply hierarchical clustering on the bach data set. For h-clust, we need a distance matrix as an input. We create a distance matrix using Euclidean distance for the reduced bach 2015 data set. 
+
+```{r}
+
+```
+
+Now you can run a hierarchical cluster analysis using the hclust function.
+
+```{r}
+
+
+```
+
+Plot the dendogram and draw red borders around 10 clusters
+
+```{r}
+
+```
+
+Validate the cluster solution just as for k-means before (using eclust)
+
+```{r}
+
+
+```
+
+
+# Use cluster assignment to improve prediction
+
+Finally, we would like to use clustering to improve our model of the prediction of the net income or loss of a company. We stick to the data from 2015.
+
+```{r error=TRUE}
+
+## Data preparation
+bach_2015$D_loss <- ifelse(bach_2015$net_profit_or_loss < 0, 1, 0)
+bach_2015$D_loss <- as.factor(bach_2015$D_loss)
+
+prop.table(table(bach$D_loss))
+
+#we append the cluster solution to the original data set
+
+
+#We split the data into training and test, using the whole 2015 data set 
+
+
+```
+
+Now we can start with the models. Run one model using the 2015 training data set, not using the kmeans9 , net_profit_or_loss or return_on_equity variable. Include the kmeans9 variable in the second run
+
+```{r}
+
+#set up CV:
+ctrl  <- trainControl(method = "cv",
+                      number = 5)
+
+#Run RF on a model not including the cluster assignments and including it
+set.seed(1234)
+
+# predict the outcome on a test set
+
+#Estimate RMSE, R^2 and MAE:
+
+
+
+#rpart with cluster solution
+
+set.seed(1234)
+
+# predict the outcome on a test set
+
+
+#Estimate RMSE, R^2 and MAE:
+
+
+
+```
+
+
+
