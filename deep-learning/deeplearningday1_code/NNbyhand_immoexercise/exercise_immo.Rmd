@@ -1,0 +1,129 @@
+---
+title: "Deep Learning Immoscout Example"
+author: "Sebastian Sternberg & Dr. Christian Arnold"
+date: "22 3 2019"
+output: html_document
+---
+
+```{r}
+
+rm(list = ls())
+
+load("immofr_extended.Rda")
+
+head(fr_immo)
+
+#drop non-numeric
+fr_immo_reduced <- dplyr::select(fr_immo, -"place", -"lon", -"lat", -"quarter", -"frank_lat", -"frank_lon") #we remove the address, the quarter, and the lon and lat
+
+fr_immo_reduced <- na.omit(fr_immo_reduced) #drop NAs from data set
+
+
+```
+
+Create training and test set:
+
+```{r}
+
+## 75% of the sample size
+smp_size <- floor(0.75 * nrow(fr_immo_reduced))
+
+## set the seed to make your partition reproducible
+
+set.seed(123)
+train_ind <- sample(seq_len(nrow(fr_immo_reduced)), size = smp_size)
+
+train_immo <- fr_immo_reduced[train_ind, ]
+test_immo <- fr_immo_reduced[-train_ind, ]
+
+#remove NAs
+train_immo <- na.omit(train_immo)
+test_immo <- na.omit(test_immo)
+
+```
+
+
+
+
+```{r}
+
+#scale:
+
+mean_train <- apply(train_immo, 2, mean) 
+sd_train <- apply(train_immo, 2, sd) 
+
+train_immo <- scale(train_immo, center = mean_train, scale = sd_train) 
+test_immo <- scale(test_immo, center = mean_train, scale = sd_train) 
+
+
+train_y <- train_immo[, 1]
+train_x <- train_immo[, -1]
+
+test_y <- test_immo[, 1]
+test_x <- test_immo[, -1]
+
+
+
+library(keras)
+
+model <- keras_model_sequential() %>% 
+ layer_dense(units = 64, activation = "relu",
+                input_shape = dim(train_x)[2]) %>%
+  layer_dense(units = 32, activation = "relu") %>% 
+  layer_dense(units = 1)
+
+model %>% 
+  compile(optimizer = optimizer_rmsprop(), 
+           loss = "mae"
+)
+
+summary(model)
+
+
+history <- model %>% fit(
+  train_x,
+  train_y,
+  epochs = 10)
+
+#Before we predict we have to scale it in the same way:
+
+pred_NN <- model %>% predict(test_x)
+
+mae(test_y - pred_NN) #we have to scale back
+
+
+```
+
+Run random forest:
+
+```{r}
+
+#run lm:
+
+summary(m_lm <- lm(rent ~ ., as.data.frame(train_immo)))
+pred_lm <- predict(m_lm, as.data.frame(test_immo))
+
+mae <- function(error)
+{
+    mean(abs(error))
+}
+
+mae(test_immo[, 1] - pred_lm)
+
+
+#using random forest:
+library(randomForest)
+
+m_rf <- randomForest(rent ~ . , as.data.frame(train_immo))
+
+pred_rf <- predict(m_rf, test_immo)
+
+mae(test_immo[, 1] - pred_rf)
+
+```
+
+
+
+
+
+

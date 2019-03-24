@@ -1,0 +1,271 @@
+---
+title: "Neural Nets by hand"
+author: "Sebastian Sternberg & Dr. Christian Arnold"
+date: "22 3 2019"
+output: html_document
+---
+
+
+Code adopted from : https://github.com/Selbosh/selbosh.github.io/blob/source/content/post/2018-01-09-neural-network.Rmd
+
+## Building a neural networkfor binary classification from scratch
+
+Set up some hard to classify data. 
+
+```{r}
+rm(list = ls())
+
+two_spirals <- function(N = 200,
+                        radians = 3*pi,
+                        theta0 = pi/2,
+                        labels = 0:1) {
+  N1 <- floor(N / 2)
+  N2 <- N - N1
+  
+  theta <- theta0 + runif(N1) * radians
+  spiral1 <- cbind(-theta * cos(theta) + runif(N1),
+                   theta * sin(theta) + runif(N1))
+  spiral2 <- cbind(theta * cos(theta) + runif(N2),
+                   -theta * sin(theta) + runif(N2))
+  
+  points <- rbind(spiral1, spiral2)
+  classes <- c(rep(0, N1), rep(1, N2))
+  
+  data.frame(x1 = points[, 1],
+             x2 = points[, 2],
+             class = factor(classes, labels = labels))
+}
+set.seed(42)
+hard_data <- two_spirals(labels = c("false", "true"))
+
+
+```
+
+
+Scatterplot of this data:
+
+```{r}
+
+library(ggplot2)
+theme_set(theme_classic())
+
+ggplot(hard_data) +
+  aes(x1, x2, colour = class) +
+  geom_point() +
+  labs(x = expression(x[1]),
+       y = expression(x[2]))
+
+```
+
+
+Fit a logistic regression to it:
+
+
+```{r}
+
+logreg <- glm(class ~ x1 + x2, family = binomial, data = hard_data)
+correct <- sum((fitted(logreg) > .5) + 1 == as.integer(hard_data$class))
+
+```
+
+But as the decision boundary can only be linear, it doesn't work too well at distinguishing our two classes.
+Logistic regression classifies `r correct` (`r round(100 * correct / nrow(hotdogs))`%) of our objects correctly.
+
+```{r}
+
+beta <- coef(logreg)
+grid <- expand.grid(x1 = seq(min(hard_data$x1) - 1,
+                             max(hard_data$x1) + 1,
+                             by = .25),
+                    x2 = seq(min(hard_data$x2) - 1,
+                             max(hard_data$x2) + 1,
+                             by = .25))
+grid$class <- factor((predict(logreg, newdata = grid) > 0) * 1,
+                     labels = c('false', 'true'))
+
+#plot it:
+ggplot(hard_data) + aes(x1, x2, colour = class) +
+  geom_point(data = grid, size = .5) +
+  geom_point() +
+  labs(x = expression(x[1]), y = expression(x[2])) +
+  geom_abline(intercept = -beta[1]/beta[3],
+              slope = -beta[2]/beta[3])
+
+```
+
+Nonlinearity is where neural networks are useful.
+
+# Artificial neural networks by hand
+
+
+## Forward propagation:
+
+```{r}
+
+#define feed forward function:
+
+feedforward <- function(x, w1, w2) {
+  z1 <- cbind(1, x) %*% w1
+  h <- sigmoid(z1)
+  z2 <- cbind(1, h) %*% w2
+  list(output = sigmoid(z2), h = h)
+}
+
+#define sigmoid
+sigmoid <- function(x) 1 / (1 + exp(-x))
+
+```
+
+
+## Back propagation
+
+```{r}
+backpropagate <- function(x, y, y_hat, w1, w2, h, learn_rate) {
+  
+  #calculate the derivatives
+  dw2 <- t(cbind(1, h)) %*% (y_hat - y) 
+  dh  <- (y_hat - y) %*% t(w2[-1, , drop = FALSE]) 
+  dw1 <- t(cbind(1, x)) %*% (h * (1 - h) * dh)
+  
+  #change weights into better direction
+  w1 <- w1 - learn_rate * dw1
+  w2 <- w2 - learn_rate * dw2
+  
+  list(w1 = w1, w2 = w2)
+}
+
+
+
+```
+
+## Training the network
+
+```{r}
+train_nn <- function(x, y, hidden = 5, learn_rate = 1e-2, iterations = 1e4) {
+  d <- ncol(x) + 1
+  w1 <- matrix(rnorm(d * hidden), d, hidden)
+  w2 <- as.matrix(rnorm(hidden + 1))
+  for (i in 1:iterations) {
+    ff <- feedforward(x, w1, w2)
+    bp <- backpropagate(x, y,
+                        y_hat = ff$output,
+                        w1, w2,
+                        h = ff$h,
+                        learn_rate = learn_rate)
+    w1 <- bp$w1; w2 <- bp$w2
+  }
+  list(output = ff$output, w1 = w1, w2 = w2)
+}
+
+```
+
+Train a network with five hidden nodes
+
+```{r}
+#set up the data:
+x <- data.matrix(hard_data[, c('x1', 'x2')])
+y <- hard_data$class == 'true'
+
+nnet5 <- train_nn(x, y, hidden = 5, iterations = 1e5)
+
+```
+
+How good is the classification:
+
+```{r}
+mean((nnet5$output > .5) == y)
+```
+
+That's `r round(100*mean((nnet5$output > .5) == y))`%, or `r sum((nnet5$output > .5) == y)` out of `r nrow(hard_data)` objects in the right class.
+
+
+Let’s draw a picture to see what the decision boundaries look like. To do that, we firstly make a grid of points around the input space:
+
+
+Firstly make a grid of points around the input space:
+```{r}
+
+grid <- expand.grid(x1 = seq(min(hard_data$x1) - 1,
+                             max(hard_data$x1) + 1,
+                             by = .25),
+                    x2 = seq(min(hard_data$x2) - 1,
+                             max(hard_data$x2) + 1,
+                             by = .25))
+
+```
+
+feed these points forward through our trained neural network:
+```{r}
+
+ff_grid <- feedforward(x = data.matrix(grid[, c('x1', 'x2')]),
+                       w1 = nnet5$w1,
+                       w2 = nnet5$w2)
+grid$class <- factor((ff_grid$output > .5) * 1,
+                     labels = levels(hard_data$class))
+
+```
+
+
+```{r}
+
+ggplot(hard_data) + aes(x1, x2, colour = class) +
+  geom_point(data = grid, size = .5) +
+  geom_point() +
+  labs(x = expression(x[1]), y = expression(x[2]))
+
+```
+
+The more nodes we add to the hidden layer, the more elaborate the decision boundaries can become, improving accuracy at the expense of computation time (as more weights must be calculated) and increased risk of overfitting.
+
+Training a more complex neural net with 30 hidden nodes (still just one layer).
+
+```{r}
+
+nnet30 <- train_nn(x, y, hidden = 30, iterations = 1e5)
+
+mean((nnet30$output > .5) == y)
+
+
+ff_grid <- feedforward(x = data.matrix(grid[, c('x1', 'x2')]),
+                       w1 = nnet30$w1,
+                       w2 = nnet30$w2)
+grid$class <- factor((ff_grid$output > .5) * 1,
+                     labels = levels(hard_data$class))
+
+
+ggplot(hard_data) + aes(x1, x2, colour = class) +
+  geom_point(data = grid, size = .5) +
+  geom_point() +
+  labs(x = expression(x[1]), y = expression(x[2]))
+
+```
+
+That is pretty impressive, isn't it? And we just used a one-layer NN. 
+
+Logistic regression like neural net with just one hidden node:
+
+```{r}
+
+nnet1 <- train_nn(x, y, hidden = 1, iterations = 1e5)
+
+mean((nnet1$output > .5) == y)
+
+
+ff_grid <- feedforward(x = data.matrix(grid[, c('x1', 'x2')]),
+                       w1 = nnet1$w1,
+                       w2 = nnet1$w2)
+
+grid$class <- factor((ff_grid$output > .5) * 1,
+                     labels = levels(hard_data$class))
+
+
+ggplot(hard_data) + aes(x1, x2, colour = class) +
+  geom_point(data = grid, size = .5) +
+  geom_point() +
+  labs(x = expression(x[1]), y = expression(x[2]))
+
+
+
+```
+
+Not really impressive.
